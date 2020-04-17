@@ -1,0 +1,118 @@
+---
+#Creator - K.Janarthanan
+#Purpose - To provision FrontEnd and BackEnd Instances with appropriate Tag values using Auto Scale
+
+Parameters:
+  SSHKey:
+    Description: SSH Key Name
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Key should be an existing one in AWS
+  FrontendCount:
+      Description: No of Frontend VMs
+      Type: Number
+      Default: 2
+      MaxValue: 4
+      MinValue: 1
+      ConstraintDescription: Maximum is 4 and Minimum is 1
+  BackendCount:
+      Description: No of Backend VMs
+      Type: Number
+      Default: 1
+      MaxValue: 3
+      MinValue: 1
+      ConstraintDescription: Maximum is 3 and Minimum is 1
+
+Mappings:
+  InstanceSettings:
+    Frontend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: front-end
+    Backend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: back-end
+    
+Resources:
+
+  Frontend:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Frontend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Frontend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+        - !Ref HTTPSecurityGroup
+      UserData: !Base64 |
+        #!/bin/bash
+        sudo -i
+        yum install httpd -y
+        systemctl start httpd
+        echo "Hello I am from Front End" > /var/www/html/index.html
+      
+  FrontendASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: FrontendASG
+      DesiredCapacity: !Ref FrontendCount
+      MinSize: !Ref FrontendCount
+      MaxSize: !Ref FrontendCount
+      LaunchConfigurationName: !Ref Frontend
+      AvailabilityZones: 
+        Fn::GetAZs: 
+          Ref: "AWS::Region"
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Frontend, TagKey]
+          Value: !FindInMap [InstanceSettings, Frontend, TagValue]
+          PropagateAtLaunch: true
+ 
+  Backend:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Backend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Backend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+
+  BackendASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: BackendASG
+      DesiredCapacity: !Ref BackendCount
+      MinSize: !Ref BackendCount
+      MaxSize: !Ref BackendCount
+      LaunchConfigurationName: !Ref Backend
+      AvailabilityZones: 
+        Fn::GetAZs: 
+          Ref: "AWS::Region"
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Backend, TagKey]
+          Value: !FindInMap [InstanceSettings, Backend, TagValue]
+          PropagateAtLaunch: true
+   
+  SSHSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: SSH Security Group
+      GroupDescription: SSH for servers to allow inbound traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  HTTPSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: HTTP Security Group
+      GroupDescription: HTTP for client to connect to Web servers
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+   

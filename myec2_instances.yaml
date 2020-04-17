@@ -1,0 +1,86 @@
+---
+#Creator - K.Janarthanan
+#Purpose - To provision FrontEnd and BackEnd Instances with appropriate Tag values
+
+Parameters:
+  SSHKey:
+    Description: SSH Key Name
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Key should be an existing one in AWS
+
+Mappings:
+  InstanceSettings:
+    Frontend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: front-end
+    Backend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: back-end
+    
+
+Resources:
+  Frontend:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Frontend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Frontend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+        - !Ref HTTPSecurityGroup
+      UserData: !Base64 |
+        #!/bin/bash
+        sudo -i
+        yum install httpd -y
+        systemctl start httpd
+        echo "Hello I am from Front End" > /var/www/html/index.html
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Frontend, TagKey]
+          Value: !FindInMap [InstanceSettings, Frontend, TagValue]
+ 
+  Backend:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Backend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Backend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Backend, TagKey]
+          Value: !FindInMap [InstanceSettings, Backend, TagValue]
+   
+  SSHSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: SSH Security Group
+      GroupDescription: SSH for servers to allow inbound traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  HTTPSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: HTTP Security Group
+      GroupDescription: HTTP for client to connect to Web servers
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  FrontIP:
+    Description: IP Address of Front End
+    Value: !GetAtt Frontend.PublicIp
+  BackIP:
+    Description: IP Address of Back End
+    Value: !GetAtt Backend.PublicIp
+   

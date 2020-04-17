@@ -1,0 +1,130 @@
+---
+#Creator - K.Janarthanan
+#Purpose - To provision FrontEnd and BackEnd Instances with appropriate Tag values
+#User Data is initialized with MetaData [cfn init]
+Parameters:
+  SSHKey:
+    Description: SSH Key Name
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Key should be an existing one in AWS
+
+Mappings:
+  InstanceSettings:
+    Frontend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: front-end
+    Backend:
+      AMIID: ami-0cbc6aae997c6538a
+      Size: t2.micro
+      TagKey: tier
+      TagValue: back-end
+    
+
+Resources:
+  Frontend:
+    Type: 'AWS::EC2::Instance'
+    Metadata:
+      Comment: Installing Web servers
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum: 
+              httpd: []
+          files:
+            "/var/www/html/index.html":
+              content: !Sub |
+                Hello Friends, I am from Front End <br>
+                My Stack Name is ${AWS::StackName} <br>
+                My Region is ${AWS::Region} <br>
+            "/etc/cfn/cfn-hup.conf":
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+              mode: "000400"
+              owner: "root"
+              group: "root"
+            "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.Frontend.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource Frontend --region ${AWS::Region}
+              mode: "000400"
+              owner: "root"
+              group: "root"
+          services:
+            sysvinit:
+              httpd: 
+                enabled: 'true'
+                ensureRunning: 'true'
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT5M
+
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Frontend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Frontend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+        - !Ref HTTPSecurityGroup
+      UserData:
+        "Fn::Base64":
+          !Sub |
+            #!/bin/bash -xe
+            yum update -y aws-cfn-bootstrap
+            # Start cfn-init
+            /opt/aws/bin/cfn-init -s ${AWS::StackId} -r Frontend --region ${AWS::Region} || error_exit 'Failed to run cfn-init'
+            # Start up the cfn-hup daemon to listen for changes to the EC2 instance metadata
+            /opt/aws/bin/cfn-hup || error_exit 'Failed to start cfn-hup'
+            # All done so signal success
+            /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackId} --resource Frontend --region ${AWS::Region}
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Frontend, TagKey]
+          Value: !FindInMap [InstanceSettings, Frontend, TagValue]
+ 
+  Backend:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      KeyName: !Ref SSHKey
+      ImageId: !FindInMap [InstanceSettings, Backend, AMIID]
+      InstanceType: !FindInMap [InstanceSettings, Backend, Size]
+      SecurityGroups:
+        - !Ref SSHSecurityGroup
+      Tags:
+        - Key: !FindInMap [InstanceSettings, Backend, TagKey]
+          Value: !FindInMap [InstanceSettings, Backend, TagValue]
+   
+  SSHSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: SSH Security Group
+      GroupDescription: SSH for servers to allow inbound traffic
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  HTTPSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupName: HTTP Security Group
+      GroupDescription: HTTP for client to connect to Web servers
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+   
+Outputs:
+  FrontIP:
+    Description: IP Address of Front End
+    Value: !GetAtt Frontend.PublicIp
+  BackIP:
+    Description: IP Address of Back End
+    Value: !GetAtt Backend.PublicIp
+  
