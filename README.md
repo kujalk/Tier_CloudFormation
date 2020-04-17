@@ -12,3 +12,5 @@ Both Template 1.1 & 1.2 are used for same purpose. But 1.2 utilizes, ‘MetaData
 Template 2 - autoscale_ec2.yaml
 -------------------------------------------------
 ![alt text](https://github.com/kujalk/Tier_CloudFormation/blob/master/Images/Architect-2.PNG)
+
+Blog - https://scripting4ever.wordpress.com/2020/04/17/simple-aws-cloudformation-template-to-create-ec2-instances-with-appropriate-security-groups-and-tag-values/
